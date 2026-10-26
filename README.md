@@ -1,5 +1,11 @@
 # MLOps Pipeline - Iris Classification API
 
+[![CI Pipeline](https://github.com/jackstealer/mlops/actions/workflows/ci-pipeline.yml/badge.svg)](https://github.com/jackstealer/mlops/actions/workflows/ci-pipeline.yml)
+[![Docker Build](https://github.com/jackstealer/mlops/actions/workflows/docker-build.yml/badge.svg)](https://github.com/jackstealer/mlops/actions/workflows/docker-build.yml)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.143-green)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue)
+
 A production-ready Machine Learning API built with FastAPI and Docker for predicting Iris flower species.
 
 ## 🚀 Quick Start
@@ -105,18 +111,36 @@ Invoke-RestMethod -Uri "http://localhost:8000/predict" `
 ## 🧪 Test Cases
 
 **Setosa (Class 0):**
+
 ```json
-{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}
+{
+  "sepal_length": 5.1,
+  "sepal_width": 3.5,
+  "petal_length": 1.4,
+  "petal_width": 0.2
+}
 ```
 
 **Versicolor (Class 1):**
+
 ```json
-{"sepal_length": 6.4, "sepal_width": 3.2, "petal_length": 4.5, "petal_width": 1.5}
+{
+  "sepal_length": 6.4,
+  "sepal_width": 3.2,
+  "petal_length": 4.5,
+  "petal_width": 1.5
+}
 ```
 
 **Virginica (Class 2):**
+
 ```json
-{"sepal_length": 6.3, "sepal_width": 3.3, "petal_length": 6.0, "petal_width": 2.5}
+{
+  "sepal_length": 6.3,
+  "sepal_width": 3.3,
+  "petal_length": 6.0,
+  "petal_width": 2.5
+}
 ```
 
 ## 🐳 Docker Commands
@@ -168,6 +192,7 @@ docker push your-username/iris-ml-api:v1.0
 ### Cloud Platforms
 
 Deploy to:
+
 - AWS (ECS, EKS, App Runner)
 - Azure (Container Instances, AKS)
 - GCP (Cloud Run, GKE)
