@@ -51,3 +51,7 @@ htmlcov/
 
 # Docker
 docker-image.tar.gz
+
+# MLflow
+mlflow.db
+mlruns/
