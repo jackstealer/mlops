@@ -1,106 +1,119 @@
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score
 import joblib
 from pathlib import Path
+import sys
 import mlflow
 import mlflow.sklearn
+from sklearn.metrics import precision_score, recall_score
+#Client API lets us manage registered models and their aliases
+from mlflow import MlflowClient
 
-# Configure mlflow tracking (using SQLite database)
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+# Set the tracking URI for MLflow
+mlflow.set_tracking_uri("http://localhost:5000")
 
-# Group related training runs under one experiment
-mlflow.set_experiment("iris-classification")
+#group related runs together
+mlflow.set_experiment("Iris_Classification")
 
 
-
-"""Train an Iris classifier, report its accuracy, and save it to models/."""
+#load the iris dataset
 iris = load_iris()
+X = iris.data
+y = iris.target
 
-X_train, X_test, y_train, y_test = train_test_split(
-    iris.data,
-    iris.target,
-    test_size=0.2,
-    random_state=42,
-    stratify=iris.target,
-)
+#split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-n_estimators= 10
-random_state= 42
+n_estimators = 10
+random_state = 42
 
-model_parameters= {
+model_parameters = {
     "model_type": "RandomForestClassifier",
     "n_estimators": n_estimators,
     "random_state": random_state,
-    "test_size": 0.2    
+    "test_size": 0.2
 }
-# Start a tracked training run
+
+#start the tracked training run
 with mlflow.start_run() as run:
-    # Record the rtraining configuration before model fitting
+    #Record the training parameters before model fitting
     mlflow.log_params(model_parameters)
 
-    # Build classifier using selected parameters
-    model = RandomForestClassifier(n_estimators=n_estimators, random_state=random_state)
+    #Build classifier using selected parameters
+    #Initialise the Random Forest Classifier with the specified parameters
+    model = RandomForestClassifier(
+        n_estimators=n_estimators,
+        random_state=random_state
+    )
     model.fit(X_train, y_train)
 
-    predictions = model.predict(X_test)
+    #make predictions
+    y_pred = model.predict(X_test)
 
-    accuracy = accuracy_score(y_test, predictions)
-    print(f"Test accuracy: {accuracy}")
+    #calculate accuracy
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy: {accuracy}")
 
-    # Calcualte the precision
-    precision = precision_score(y_test, predictions, average="macro", zero_division=0)
+    #calculate the precision and recall metrics and print them
+    precision = precision_score(y_test, y_pred, average='macro', zero_division=0)
+    recall = recall_score(y_test, y_pred, average='macro', zero_division=0)
     print(f"Precision: {precision}")
-
-    # Calculate the recall
-    recall = recall_score(y_test, predictions, average="macro", zero_division=0)
     print(f"Recall: {recall}")
 
+    #model quality gate
+    #define the minimum acceptable accuracy for now
+    MIN_TEST_ACCURACY = 0.90
+    if accuracy < MIN_TEST_ACCURACY:
+        raise ValueError(f"Model rejected :Model accuracy {accuracy} is below the minimum threshold of {MIN_TEST_ACCURACY}")
+    else:
+        print("Model accepted: Model accuracy meets the minimum threshold.")
+
     mlflow.log_metrics({
-        "test_accuracy":accuracy,
+        "test_accuracy": accuracy,
         "test_precision": precision,
         "test_recall": recall
     })
 
-    # Save the trained model locally
-    model_dir = Path(__file__).resolve().parent / "models"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    model_path = model_dir / "iris_random_forest_model.joblib"
-    joblib.dump(model, model_path)
-    print(f"Model saved to: {model_path}")
+    #log the accuracy metric
+    mlflow.log_metric("accuracy", accuracy)
 
-    # Log the model to MLflow
+    #save the model
+    Path("models").mkdir(exist_ok=True)
+    joblib.dump(model, "models/model.pkl")
+
+    #log the model to MLflow
     mlflow.sklearn.log_model(
         sk_model=model,
-        artifact_path="model",
+        name="iris_random_forest_model",
+        registered_model_name="IrisRandomForestModel",
         skops_trusted_types=["sklearn.tree._tree.Tree"]
     )
-    print("✅ Model logged to MLflow")
 
-    run_id = run.info.run_id
-    print(f"MLflow Run ID: {run_id}")
-
-# Register the model and set champion alias (outside the run context)
-try:
-    client = mlflow.MlflowClient()
-    model_uri = f"runs:/{run_id}/model"
-    
-    # Register the model
-    registered_model = mlflow.register_model(
-        model_uri=model_uri,
-        name="iris-classifier"
+    #Assign the champion alias to the newly registered model version
+    client = MlflowClient()
+    #identify current training run
+    #we use this rum id to find the model version that was just registered for particular run
+    current_run_id = mlflow.active_run().info.run_id
+    #Retirive all the version registered under this model name
+    registered_versions = client.search_model_versions(
+        "name = 'IrisRandomForestModel'"
     )
-    print(f"✅ Model registered as iris-classifier version {registered_model.version}")
-    
-    # Set champion alias
+
+    #find the version that was registered in this run
+    current_model_version = next(
+        (
+            version
+            for version in registered_versions
+            if version.run_id == current_run_id
+        ),
+        None
+    )
+
     client.set_registered_model_alias(
-        name="iris-classifier",
+        name="IrisRandomForestModel",
         alias="champion",
-        version=registered_model.version
+        version=current_model_version.version
     )
-    print(f"✅ Set champion alias to version {registered_model.version}")
-except Exception as e:
-    print(f"⚠️  Warning: Could not register model or set alias: {e}")
-
-print(f"Training completed successfully!")
+    print("Registered model in MLflow Model Registry as 'IrisRandomForestModel'")

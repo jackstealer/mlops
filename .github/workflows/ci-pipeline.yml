@@ -46,7 +46,48 @@ jobs:
       - name: Run automated tests
         run: python -m pytest -v
 
-  # JOB-2: Build and Publish Docker Image
+  # JOB-2: Build Docker Image (for PRs - build only, no push)
+  build-image:
+    name: Build Docker Image
+
+    # This job starts only if all tests pass
+    needs: test
+    runs-on: ubuntu-latest
+
+    # Only run on pull requests to main
+    if: github.event_name == 'pull_request'
+
+    steps:
+      # Download repo source code
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # Enable Docker Buildkit Functionality
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Generate image names and tags
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=pr
+            type=sha,format=short
+
+      # Build the docker image (no push)
+      - name: Build Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # JOB-3: Build and Publish Docker Image (for pushes to main)
   build-and-publish:
     name: Build and Publish Docker Image
 
@@ -56,6 +97,7 @@ jobs:
 
     # Publish only when code is pushed to main
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     steps:
       # Download repo source code
       - name: Checkout source code
@@ -80,10 +122,11 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw, value=latest
-            type=sha, format=short
+            type=raw,value=latest
+            type=sha,format=short
+            type=ref,event=branch
 
-      # Build the docker image and push it to GHCR
+      # Build and push the docker image to GHCR
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
@@ -91,3 +134,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

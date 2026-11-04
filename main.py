@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import joblib
-from fastapi import FastAPI,HTTPException,Request
+from fastapi import FastAPI,HTTPException, Request
 from pydantic import BaseModel, Field
 import mlflow
 import mlflow.sklearn
@@ -13,35 +13,12 @@ from typing import Callable
 #Mlflow configuration
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:7001")
 
-MODEL_URI = "models:/iris-classifier@champion"
-MODEL_PATH = Path("models/iris_random_forest_model.joblib")
+MODEL_URI = "models:/IrisRandomForestModel@champion"
 
-# Global variables
-model = None
-client = None
-model_version = None
-
-try:
-    #Load the champion model at the application startup
-    import socket
-    socket.setdefaulttimeout(3)  # 3 second timeout
-    
+def load_mlflow_model():
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     model = mlflow.sklearn.load_model(MODEL_URI)
-    client = mlflow.MlflowClient()
-    champion_version = client.get_model_version_by_alias(name="iris-classifier", alias="champion")
-    model_version = champion_version.version
-    print(f"Loaded champion model version: {model_version} from MLflow Model Registry")
-    
-    socket.setdefaulttimeout(None)  # Reset timeout
-except Exception as e:
-    print(f"Error loading champion model from MLflow: {e}")
-    print(f"Loading local model from {MODEL_PATH}")
-    model = joblib.load(MODEL_PATH)
-    model_version = "local"
-    print(f"Loaded local model successfully")
-
-app = FastAPI(title="Iris Classifier API", description="API for predicting iris species using a trained Random Forest model.")
+    return model
 
 class IrisInput(BaseModel):
     sepal_length: float = Field(gt=0)
@@ -49,41 +26,86 @@ class IrisInput(BaseModel):
     petal_length: float = Field(gt=0)
     petal_width: float = Field(gt=0)
 
+def create_app(
+        model_loader: Callable=load_mlflow_model,
+        version_loader: Callable = None):
 
+    if version_loader is None:
+        def version_loader():
+            client = mlflow.tracking.MlflowClient(
+                tracking_uri=MLFLOW_TRACKING_URI
+            )
+            champion_version = client.get_model_version_by_alias(name="IrisRandomForestModel", alias="champion")
+            return champion_version.version
+        
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        try:
+            app.state.model = model_loader()
+        except Exception as ex:
+            print(f"Error loading model: {ex}")
+            raise RuntimeError("Unable to load the champion model")
+        
+        # client = mlflow.tracking.MlflowClient(
+        #     tracking_uri=MLFLOW_TRACKING_URI
+        #     )
+        # champion_version = client.get_model_version_by_alias(name="IrisRandomForestModel", alias="champion")
+        
+        app.state.model_version = version_loader()
+        yield
 
+    app = FastAPI(
+        title="Iris Classifiaction API",
+        description="Iris prediction API powered by MLFlow",
+        version="3.0.0",
+        lifespan=lifespan
+    )
 
+    @app.get("/")
+    def health_check():
+        return {"status": "Ready to serve"}
 
-@app.get("/")
-def health_check():
-    return {"status": "Ready to serve"}
+    @app.get("/health")
+    def health_check():
+        return {"status": "healthy"}
 
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
-
-@app.post("/predict")
-def predict(data: IrisInput):
-    features = [[
-        data.sepal_length,
-        data.sepal_width,
-        data.petal_length,
-        data.petal_width
-    ]]
-    prediction = int(model.predict(features)[0])
-    return {
-        "prediction": prediction,
-        "class_name": ["setosa", "versicolor", "virginica"][prediction]
-    }
-@app.get("/model_info")
-def get_model_info():
-    # Fetch model information from MLflow Model Registry
-    try:
-        model_version = client.get_model_version_by_alias(name="Iris_Classifier", alias="champion")
+    @app.post("/predict")
+    def predict(data: IrisInput, request: Request):
+        model = request.app.state.model
+        features = [[
+            data.sepal_length,
+            data.sepal_width,
+            data.petal_length,
+            data.petal_width
+        ]]
+        prediction = int(model.predict(features)[0])
         return {
-            "model_name": "Iris_Classifier",
-            "version": model_version.version,
-            "stage": model_version.current_stage,
-            "run_id": model_version.run_id
+            "prediction": prediction,
+            "class_name": ["setosa", "versicolor", "virginica"][prediction]
         }
-    except Exception as e:
-        return {"error": f"Failed to fetch model info: {str(e)}"}
+
+    return app
+
+app = create_app()
+
+    #mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+
+# MODEL_PATH = Path("models/model.pkl")
+# model = joblib.load(MODEL_PATH)
+# try:
+#     #Load the champion model at the application startup
+#     model = mlflow.sklearn.load_model(MODEL_URI)
+#     client = mlflow.tracking.MlflowClient()
+#     champion_version = client.get_model_version_by_alias(name="IrisRandomForestModel", alias="champion")
+
+#     model_version = champion_version.version
+#     print(f"Loaded champion model version: {model_version} from MLflow Model Registry")
+# except Exception as e:
+#     print(f"Error loading champion model: {e}")
+#     try:
+#         model = joblib.load(Path("models/model.pkl"))
+#         print("Loaded local model from models/model.pkl")
+#     except Exception as fallback_error:
+#         raise RuntimeError("Unable to load the champion or local model") from fallback_error
+
+# app = FastAPI(title="Iris Classifier API", description="API for predicting iris species using a trained Random Forest model.")
