@@ -3,5 +3,7 @@ joblib
 fastapi
 uvicorn
 pydantic
+pytest
+httpx
 
 mlflow>=3.17.0
