@@ -6,44 +6,40 @@ from pydantic import BaseModel, Field
 import mlflow
 import mlflow.sklearn
 import numpy as np
-from contextlib import asyncontextmanager
+from contextlib import asynccontextmanager
 from typing import Callable
 
 
 #Mlflow configuration
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:7001")
 
-MODEL_URI = "models:/Iris_Classifier@champion"
+MODEL_URI = "models:/iris-classifier@champion"
+MODEL_PATH = Path("models/iris_random_forest_model.joblib")
 
-def load_mlflow_model():
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    model = mlflow.sklearn.load_model(MODEL_URI)
-    return model
+# Global variables
+model = None
+client = None
+model_version = None
 
-
-def create_app(model_loader:Callable=load_mlflow_model):
-    
-    app = FastAPI()
-    app.state.model = model_loader()
-    return app
-
-
-
-
-
-
-# MODEL_PATH = Path("models/model.pkl")
-# model = joblib.load(MODEL_PATH)
 try:
     #Load the champion model at the application startup
+    import socket
+    socket.setdefaulttimeout(3)  # 3 second timeout
     
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    model = mlflow.sklearn.load_model(MODEL_URI)
     client = mlflow.MlflowClient()
-    champion_version = client.get_model_version_by_alias(name="Iris_Classifier", alias="champion")
-
+    champion_version = client.get_model_version_by_alias(name="iris-classifier", alias="champion")
     model_version = champion_version.version
     print(f"Loaded champion model version: {model_version} from MLflow Model Registry")
+    
+    socket.setdefaulttimeout(None)  # Reset timeout
 except Exception as e:
-    print(f"Error loading champion model: {e}")
+    print(f"Error loading champion model from MLflow: {e}")
+    print(f"Loading local model from {MODEL_PATH}")
+    model = joblib.load(MODEL_PATH)
+    model_version = "local"
+    print(f"Loaded local model successfully")
 
 app = FastAPI(title="Iris Classifier API", description="API for predicting iris species using a trained Random Forest model.")
 

@@ -11,6 +11,10 @@ env:
   DOCKER_IMAGE_NAME: iris-ml-api
   DOCKER_TAG: latest
 
+permissions:
+  contents:read
+  packages:write
+
 jobs:
   lint:
     name: Code Quality Check

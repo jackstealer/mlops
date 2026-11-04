@@ -63,19 +63,44 @@ with mlflow.start_run() as run:
         "test_recall": recall
     })
 
-    # Save the trained model
+    # Save the trained model locally
     model_dir = Path(__file__).resolve().parent / "models"
     model_dir.mkdir(parents=True, exist_ok=True)
     model_path = model_dir / "iris_random_forest_model.joblib"
     joblib.dump(model, model_path)
     print(f"Model saved to: {model_path}")
 
-    # Log model artifact to MLflow
-    try:
-        mlflow.log_artifact(str(model_path), "model_artifacts")
-        print("Model artifact logged to MLflow")
-    except Exception as e:
-        print(f"Warning: Could not log model artifact: {e}")
+    # Log the model to MLflow
+    mlflow.sklearn.log_model(
+        sk_model=model,
+        artifact_path="model",
+        skops_trusted_types=["sklearn.tree._tree.Tree"]
+    )
+    print("✅ Model logged to MLflow")
 
-    print(f"MLflow Run ID: {run.info.run_id}")
-    print(f"Training completed successfully!")
+    run_id = run.info.run_id
+    print(f"MLflow Run ID: {run_id}")
+
+# Register the model and set champion alias (outside the run context)
+try:
+    client = mlflow.MlflowClient()
+    model_uri = f"runs:/{run_id}/model"
+    
+    # Register the model
+    registered_model = mlflow.register_model(
+        model_uri=model_uri,
+        name="iris-classifier"
+    )
+    print(f"✅ Model registered as iris-classifier version {registered_model.version}")
+    
+    # Set champion alias
+    client.set_registered_model_alias(
+        name="iris-classifier",
+        alias="champion",
+        version=registered_model.version
+    )
+    print(f"✅ Set champion alias to version {registered_model.version}")
+except Exception as e:
+    print(f"⚠️  Warning: Could not register model or set alias: {e}")
+
+print(f"Training completed successfully!")
